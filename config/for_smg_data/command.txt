@@ -1,1 +1,0 @@
-python main.py recognition -c config/smg/test_tcn.yaml
