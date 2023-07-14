@@ -18,7 +18,7 @@ from net.st_gcn import Model
 # define function to optimize hyperparameters
 def optimize_hyperparams(hyperparams):
     # create new train.yaml file with hyperparameters set to values passed in
-    with open('config/mstcn_vae/imigue/train.yaml', 'r') as f:
+    with open('config/mstcn_vae/imigue/train_rawdata.yaml', 'r') as f:
         train_config = yaml.load(f, Loader=yaml.FullLoader)
     train_config['weight_decay'] = hyperparams['weight_decay']
     train_config['base_lr'] = hyperparams['base_lr']
@@ -58,7 +58,7 @@ if __name__ == '__main__':
     search_space = {
         'weight_decay': [0.00001, 0.0001, 0.001],
         'base_lr': [0.0001, 0.001, 0.01],
-        'step': [[5, 10], [10, 20], [20, 40]]
+        'step': [[250, 300], [300, 350], [350, 400]]
     }
 
     num_trials = 3
