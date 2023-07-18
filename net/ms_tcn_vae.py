@@ -45,20 +45,17 @@ def activation_factory(name, inplace=True):
 class MultiScale_TemporalConv(nn.Module):
     def __init__(self,
                  in_channels,
-                 out_channels,
+                 out_channels, # output = 96 -> 16 * (len(dilations) + 2) in train_rawdata.yaml
+                 dilations,
+                 branch_channels,
                  kernel_size=3,
                  stride=1,
-                 dilations=[1, 2, 3, 4],
                  residual=True,
                  residual_kernel_size=1,
                  activation='relu'):
 
-        super().__init__()
+        super(MultiScale_TemporalConv, self).__init__()
         assert out_channels % (len(dilations) + 2) == 0, '# out channels should be multiples of # branches'
-
-        # Multiple branches of temporal convolution
-        self.num_branches = len(dilations) + 2
-        branch_channels = out_channels // self.num_branches
 
         # Temporal Convolution branches
         self.branches = nn.ModuleList([
@@ -119,14 +116,26 @@ class MultiScale_TemporalConv(nn.Module):
 
 
 class EncoderMSTCN(nn.Module):
-    def __init__(self, C, num_output, num_channels=None, T=100, num_person=1, in_channels=3, num_point=22):
+    def __init__(self, C, dilations, branch_channels, num_output, num_channels, T=100, num_person=1,
+                 in_channels=3, num_point=22):
         super(EncoderMSTCN, self).__init__()
         if num_channels is None:
             num_channels = [50, 25, 1]
+
+        # Multiple branches of temporal convolution
+        self.num_branches = len(dilations) + 2
+        self.out_channel = num_output
+        if self.out_channel != self.num_branches * branch_channels:
+            self.temp = self.num_branches * branch_channels
+            print(f"\n\t Attention! num_output is not compatible "
+                  f"with branch_channels({branch_channels}) plus num_branches({self.num_branches})."
+                  f"\n\t It is now changed from {num_output} to {self.temp}.\n")
+            self.out_channel = self.temp
+
         self.data_bn = nn.BatchNorm1d(num_person * in_channels * num_point)
-        self.tcn1 = MultiScale_TemporalConv(C, num_output)
+        self.tcn1 = MultiScale_TemporalConv(C, self.out_channel, dilations, branch_channels)
         self.TCN = TemporalConvNet(T, num_channels)
-        self.conv1d = nn.Conv1d(in_channels=num_output * num_point, out_channels=in_channels * num_point, kernel_size=3, padding=1)
+        self.conv1d = nn.Conv1d(in_channels=self.out_channel * num_point, out_channels=in_channels * num_point, kernel_size=3, padding=1)
 
     def forward(self, x):
         N, C, T, V, M = x.size()
@@ -165,13 +174,14 @@ class DecoderATCN(nn.Module):
 
 
 class MSTCN_VAE(nn.Module):
-    def __init__(self, C, num_output, en_num_channels, de_num_channels, output_size, num_person=1, in_channels=3,
+    def __init__(self, C, num_output, en_num_channels, de_num_channels, output_size, dilations,
+                 branch_channels, num_person=1, in_channels=3,
                  num_point=22, fix_state=False, fix_weight=False):
         super(MSTCN_VAE, self).__init__()
         self.en_channels = en_num_channels
         self.de_channels = de_num_channels
         self.data_bn = nn.BatchNorm1d(num_person * in_channels * num_point)
-        self.encoder = EncoderMSTCN(C, num_output, num_channels=en_num_channels).to(device)
+        self.encoder = EncoderMSTCN(C, dilations, branch_channels, num_output, num_channels=en_num_channels).to(device)
         self.decoder = DecoderATCN(output_size, de_num_channels, in_channels=in_channels, num_point=22).to(device)
         self.fix_state = fix_state
         self.fix_weight = fix_weight
